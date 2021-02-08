@@ -588,6 +588,22 @@ class Standardize:
 
         return (m - mean) / np.clip(std, a_min=self.eps, a_max=None)
 
+class Windowing:
+    """
+    Apply Windowing normalization to a given input tensor, i.e. min=0 HU max=2500 HU at CT image.
+    """
+
+    def __init__(self, min=0, max=2500, **kwargs):
+        if mean is not None or std is not None:
+            assert mean is not None and std is not None
+        self.min = min
+        self.max = max
+        
+
+    def __call__(self, m):
+
+        return np.clip( (m-self.min)/self.max, 0, 1)
+
 
 class PercentileNormalizer:
     def __init__(self, pmin, pmax, channelwise=False, eps=1e-10, **kwargs):
