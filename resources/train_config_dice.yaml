@@ -65,7 +65,7 @@ loaders:
   # when reading from multiple threads.
   dataset: StandardHDF5Dataset
   # batch dimension; if number of GPUs is N > 1, then a batch_size of N * batch_size will automatically be taken for DataParallel
-  batch_size: 1
+  batch_size: 3
   # how many subprocesses to use for data loading
   num_workers: 4
   # path to the raw data within the H5
@@ -84,30 +84,32 @@ loaders:
     # SliceBuilder configuration, i.e. how to iterate over the input volume patch-by-patch
     slice_builder:
       # SliceBuilder class
-      name: SliceBuilder
+      name: AroundCenterSliceBuilder
+      # path to the center coordinates with in the H5 (for AroundCenterSliceBuilder)
+      centers_internal_path: 'centers'
       # train patch size given to the network (adapt to fit in your GPU mem, generally the bigger patch the better)
-      patch_shape: [32, 64, 64]
+      patch_shape: [64, 128, 128]
       # train stride between patches
-      stride_shape: [8, 16, 16]
+      stride_shape: [32, 64, 64]
 
     # data transformations/augmentations
     transformer:
       raw:
         # re-scale the values to be 0-mean and 1-std
-        - name: Standardize
+        - name: Windowing # Standardize
         # randomly flips an image across randomly chosen axis
-        - name: RandomFlip
+        #- name: RandomFlip
         # rotate an image by 90 degrees around a randomly chosen plane
-        - name: RandomRotate90
+        #- name: RandomRotate90
         # rotate an image by a random degrees from taken from (-angle_spectrum, angle_spectrum) interval
-        - name: RandomRotate
+        #- name: RandomRotate
           # rotate only in ZY only since most volumetric data is anisotropic
-          axes: [[2, 1]]
-          angle_spectrum: 15
-          mode: reflect
+          #  axes: [[2, 1]]
+          #  angle_spectrum: 15
+          #  mode: reflect
         # apply elasitc deformations of 3D patches on a per-voxel mesh
-        - name: ElasticDeformation
-          spline_order: 3
+        #- name: ElasticDeformation
+        #  spline_order: 3
         # randomly adjust contrast
         - name: RandomContrast
         # apply additive Gaussian noise
@@ -119,15 +121,15 @@ loaders:
           # add additional 'channel' axis when the input data is 3D
           expand_dims: true
       label:
-        - name: RandomFlip
-        - name: RandomRotate90
-        - name: RandomRotate
+              #- name: RandomFlip
+              #- name: RandomRotate90
+              #- name: RandomRotate
           # rotate only in ZY only since most volumetric data is anisotropic
-          axes: [[2, 1]]
-          angle_spectrum: 15
-          mode: reflect
-        - name: ElasticDeformation
-          spline_order: 0
+          #  axes: [[2, 1]]
+          #  angle_spectrum: 15
+          #  mode: reflect
+          #- name: ElasticDeformation
+          #  spline_order: 0
         - name: ToTensor
           expand_dims: true
 
@@ -148,7 +150,7 @@ loaders:
       stride_shape: [32, 64, 64]
     transformer:
       raw:
-        - name: Standardize
+        - name: Windowing #Standardize
         - name: ToTensor
           expand_dims: true
       label:

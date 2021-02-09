@@ -594,8 +594,6 @@ class Windowing:
     """
 
     def __init__(self, min=0, max=2500, **kwargs):
-        if mean is not None or std is not None:
-            assert mean is not None and std is not None
         self.min = min
         self.max = max
         

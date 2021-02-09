@@ -122,7 +122,14 @@ class AbstractHDF5Dataset(ConfigDataset):
                 self.raws = padded_volumes
 
         # build slice indices for raw and label data sets
-        slice_builder = get_slice_builder(self.raws, self.labels, self.weight_maps, slice_builder_config)
+        assert 'name' in slice_builder_config
+        if slice_builder_config['name'] == "AroundCenterSliceBuilder":
+            assert 'centers_internal_path' in slice_builder_config
+            centers_internal_path = slice_builder_config.get('centers_internal_path', 'centers')
+            self.centers = self.fetch_and_check(input_file, [centers_internal_path])
+            slice_builder = get_slice_builder(self.raws, self.labels, self.weight_maps, slice_builder_config, centers=self.centers)
+        else:
+            slice_builder = get_slice_builder(self.raws, self.labels, self.weight_maps, slice_builder_config)            
         self.raw_slices = slice_builder.raw_slices
         self.label_slices = slice_builder.label_slices
         self.weight_slices = slice_builder.weight_slices

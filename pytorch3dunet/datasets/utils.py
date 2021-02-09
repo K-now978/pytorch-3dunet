@@ -233,6 +233,159 @@ class RandomFilterSliceBuilder(EmbeddingsSliceBuilder):
         self._raw_slices = list(raw_slices)
         self._label_slices = list(label_slices)
 
+class AroundCenterSliceBuilder:
+    """
+    Builds the position of the patches in a given raw/label/weight ndarray based on the the patch and stride shape
+    """
+
+    def __init__(self, raw_datasets, label_datasets, centers, weight_dataset, patch_shape, stride_shape, **kwargs):
+        """
+        :param raw_datasets: ndarray of raw data
+        :param label_datasets: ndarray of ground truth labels
+        :param centers: ndarray of slice centers [n,3]
+        :param weight_dataset: ndarray of weights for the labels
+        :param patch_shape: the shape of the patch DxHxW
+        :param stride_shape: the shape of the stride DxHxW
+        :param kwargs: additional metadata
+        """
+
+        patch_shape = tuple(patch_shape)
+        stride_shape = tuple(stride_shape)
+        skip_shape_check = kwargs.get('skip_shape_check', False)
+        if not skip_shape_check:
+            self._check_patch_shape(patch_shape)
+
+        self._raw_slices = self._build_slices(raw_datasets[0], patch_shape, stride_shape, centers)
+        
+        
+        if label_datasets is None:
+            self._label_slices = None
+        else:
+            # take the first element in the label_datasets to build slices
+            mask_slices = [(slice(0,label_datasets[0].shape[0]),)+slcs for slcs in self._raw_slices]    
+            self._label_slices = mask_slices 
+            assert len(self._raw_slices) == len(self._label_slices)
+        if weight_dataset is None:
+            self._weight_slices = None
+        else:
+            raise ## not yet....
+            self._weight_slices = self._build_slices(weight_dataset[0], patch_shape, stride_shape, centers)
+            assert len(self.raw_slices) == len(self._weight_slices)
+
+    @property
+    def raw_slices(self):
+        return self._raw_slices
+
+    @property
+    def label_slices(self):
+        return self._label_slices
+
+    @property
+    def weight_slices(self):
+        return self._weight_slices
+
+    @staticmethod
+    def _build_slices(dataset, patch_shape, stride_shape, centers):
+        """Iterates over a given n-dim dataset patch-by-patch with a given stride
+        and builds an array of slice positions.
+
+        Returns:
+            list of slices, i.e.
+            [(slice, slice, slice, slice), ...] if len(shape) == 4
+            [(slice, slice, slice), ...] if len(shape) == 3
+        """
+        slices = []
+        if dataset.ndim == 4:
+            in_channels, i_z, i_y, i_x = dataset.shape
+        else:
+            i_z, i_y, i_x = dataset.shape
+
+        k_z, k_y, k_x = patch_shape
+        s_z, s_y, s_x = stride_shape
+        z_steps = SliceBuilder._gen_indices(i_z, k_z, s_z)
+        for z in z_steps:
+            y_steps = SliceBuilder._gen_indices(i_y, k_y, s_y)
+            for y in y_steps:
+                x_steps = SliceBuilder._gen_indices(i_x, k_x, s_x)
+                for x in x_steps:
+                    slice_idx = (
+                        slice(z, z + k_z),
+                        slice(y, y + k_y),
+                        slice(x, x + k_x)
+                    )
+                    if dataset.ndim == 4:
+                        slice_idx = (slice(0, in_channels),) + slice_idx
+                    slices.append(slice_idx)
+                
+
+        slices += AroundCenterSliceBuilder.get_slices_around_centers((i_z, i_y, i_x), centers[0][0], patch_shape)
+        return slices
+
+    @staticmethod
+    def _gen_indices(i, k, s):
+        assert i >= k, 'Sample size has to be bigger than the patch size'
+        for j in range(0, i - k + 1, s):
+            yield j
+        if j + k < i:
+            yield i - k
+
+    @staticmethod
+    def _check_patch_shape(patch_shape):
+        assert len(patch_shape) == 3, 'patch_shape must be a 3D tuple'
+        assert patch_shape[1] >= 64 and patch_shape[2] >= 64, 'Height and Width must be greater or equal 64'
+    
+
+    ## MY CODE
+    @staticmethod
+    def _get_slice_around_center(image_shape, center, patch_shape, centers_set, margin=[8,12,12]):
+        """
+        image_shape (x,y,z)
+        center (x,y,z)
+        patch_shape (x,y,z)
+        margin (x_m,y_m,z_m)
+        get slice around center randomly(by margin)
+        
+        """
+        x,y,z = image_shape
+        x_m,y_m,z_m = margin
+        cen_x, cen_y, cen_z = center
+        p_x,p_y,p_z = [(p//2, p-(p//2)) for p in patch_shape]
+        
+        cen_x += np.random.randint(-x_m, x_m+1)
+        cen_y += np.random.randint(-y_m, y_m+1)
+        cen_z += np.random.randint(-z_m, z_m+1)
+        
+        cen_x = p_x[0] if cen_x-p_x[0]<0 else x-p_x[1] if cen_x+p_x[1]>x else cen_x
+        cen_y = p_y[0] if cen_y-p_y[0]<0 else y-p_y[1] if cen_y+p_y[1]>y else cen_y
+        cen_z = p_z[0] if cen_z-p_z[0]<0 else z-p_z[1] if cen_z+p_z[1]>z else cen_z
+        
+        if (cen_x,cen_y,cen_z) in centers_set:
+            return None
+        else:
+            centers_set.add((cen_x,cen_y,cen_z))
+        
+        
+        x = (cen_x-p_x[0], cen_x+p_x[1])
+        y = (cen_y-p_y[0], cen_y+p_y[1])
+        z = (cen_z-p_z[0], cen_z+p_z[1])
+        
+        slc = (
+            slice(*x),
+            slice(*y),
+            slice(*z)
+        )
+        return slc
+
+    @staticmethod
+    def get_slices_around_centers(image_shape, centers, patch_shape, slices_per_center=20, margin=[8,12,12]):
+        slices = list()
+        centers_set = set()
+        for center in centers:
+            for _ in range(slices_per_center):
+                slc = AroundCenterSliceBuilder._get_slice_around_center(image_shape, center, patch_shape, centers_set, margin)
+                if slc:
+                    slices.append(slc)
+        return slices     
 
 def get_class(class_name, modules):
     for module in modules:
@@ -252,11 +405,14 @@ def _loader_classes(class_name):
     return get_class(class_name, modules)
 
 
-def get_slice_builder(raws, labels, weight_maps, config):
+def get_slice_builder(raws, labels, weight_maps, config, centers=None):
     assert 'name' in config
     logger.info(f"Slice builder config: {config}")
     slice_builder_cls = _loader_classes(config['name'])
-    return slice_builder_cls(raws, labels, weight_maps, **config)
+    if centers:
+        return slice_builder_cls(raws, labels, centers, weight_maps, **config)
+    else:
+        return slice_builder_cls(raws, labels, weight_maps, **config)
 
 
 def get_train_loaders(config):
